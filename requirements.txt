@@ -1,6 +1,7 @@
-fastapi[standard]
+fastapi
 uvicorn
-gunicorn
-supabase 
-python-dotenv 
-pydantic
+python-dotenv
+supabase
+pydantic[email]
+web3
+eth-account

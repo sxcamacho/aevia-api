@@ -9,6 +9,10 @@ class Wish(BaseModel):
     trustedContactEmail: EmailStr
     emailTo: EmailStr
     emailMessage: str
+    cryptoWalletFrom: str
     cryptoWalletTo: str
     cryptoTokenAddress: str
+    cryptoTokenType: int
+    cryptoTokenId: str
     cryptoAmount: str 
+    cryptoChainId: int
