@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 
-class Wish(BaseModel):
+class Legacy(BaseModel):
+    legacyId: int
     firstName: str
     lastName: str
     email: EmailStr
@@ -16,3 +17,4 @@ class Wish(BaseModel):
     cryptoTokenId: str
     cryptoAmount: str 
     cryptoChainId: int
+    cryptoSignature: str

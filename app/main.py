@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import wish
+from app.routes import legacy
 
 app = FastAPI(
-    title="Wishes API",
-    description="API for wishes management",
+    title="Aevia API",
+    description="API for legacies management",
     version="1.0.0"
 )
 
@@ -22,4 +22,4 @@ def read_root():
     return {"status": "running"}
 
 # include routes
-app.include_router(wish.router) 
+app.include_router(legacy.router) 
