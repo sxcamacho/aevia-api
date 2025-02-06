@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="aevia.png" alt="Aevia Logo"/>
+</p>
+
 # Aevia API
 
 A FastAPI service that manages crypto asset inheritance through smart contracts.
