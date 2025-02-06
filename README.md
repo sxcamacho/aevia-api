@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="aevia.png" alt="Aevia Logo"/>
+  <img src="aevia.png" alt="Aevia Image"/>
 </p>
 
 # Aevia API
@@ -58,12 +58,12 @@ uvicorn app.main:app --reload
 
 #### Legacies
 - `POST /legacies` - Create a new legacy
-- `POST /legacies/{legacy_id}/sign` - Get signature payload for a legacy
-- `PATCH /legacies/{legacy_id}/sign` - Set signature for a legacy
+- `POST /legacies/{id}/sign` - Get signature payload for a legacy
+- `PATCH /legacies/{id}/sign` - Set signature for a legacy
 
 #### Contracts
 - `GET /contracts` - List all contracts
-- `GET /contracts/{chain_id}/{name}` - Get contract by chain and name
+- `GET /contracts/{name}/{chain_id}` - Get contract by name and chain id
 - `POST /contracts` - Create a new contract
 
 ## Database Schema

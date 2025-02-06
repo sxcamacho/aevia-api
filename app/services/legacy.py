@@ -3,9 +3,10 @@ from app.config.database import supabase
 from app.models.legacy import Legacy
 from app.services.signature import SignatureService
 from app.services.contract import ContractService
-import secrets
-import os
 from dotenv import load_dotenv
+
+import secrets
+import uuid
 
 load_dotenv()
 class LegacyService:
@@ -38,12 +39,15 @@ class LegacyService:
 
             return result.data[0]
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(
+                    status_code=500,
+                    detail=f"Error creacting legacy: {str(e)}"
+                )
 
     @staticmethod
-    async def get_signature_message(legacy_id: int):
+    async def get_signature_message(id: uuid.UUID):
         try:
-            result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
+            result = supabase.table("legacies").select("*").eq("id", id).execute()
             data = result.data[0]
 
             if not data:
@@ -63,4 +67,27 @@ class LegacyService:
             )
             return message
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(
+                    status_code=500,
+                    detail=f"Error getting signature message: {str(e)}"
+                )
+
+    @staticmethod
+    async def set_signature(id: uuid.UUID, signature: str):
+        try:
+            result = supabase.table("legacies").select("*").eq("id", id).execute()
+            data = result.data[0]
+
+            if not data:
+                raise HTTPException(status_code=404, detail="Legacy not found")
+
+            result = supabase.table("legacies").update({
+                "crypto_signature": signature
+            }).eq("id", id).execute()
+
+            return result.data[0]
+        except Exception as e:
+            raise HTTPException(
+                    status_code=500,
+                    detail=f"Error setting signature: {str(e)}"
+                )
