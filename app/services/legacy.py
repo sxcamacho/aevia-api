@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from app.config.database import supabase
 from app.models.legacy import Legacy
 from app.services.signature import SignatureService
+from app.services.contract import ContractService
 import secrets
 import os
 from dotenv import load_dotenv
@@ -12,7 +13,7 @@ class LegacyService:
     async def create_legacy(legacy: Legacy):
         try:
             # TODO: get based chainId contract
-            handler_contract_address = os.getenv("WISH_HANDLER_CONTRACT_ADDRESS")
+            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", legacy.cryptoChainId)
 
             result = supabase.table("legacies").insert({
                 "legacy_id": secrets.randbelow(2**256),
@@ -32,7 +33,7 @@ class LegacyService:
                 "crypto_amount": legacy.cryptoAmount or None,
                 "crypto_signature": None,
                 "crypto_chain_id": legacy.cryptoChainId or None,
-                "crypto_handler_contract_address": handler_contract_address
+                "crypto_contract_address": contract.address
             }).execute()
 
             return result.data[0]
@@ -40,7 +41,7 @@ class LegacyService:
             raise HTTPException(status_code=500, detail=str(e))
 
     @staticmethod
-    async def get_signature_payload(legacy_id: int):
+    async def get_signature_message(legacy_id: int):
         try:
             result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
             data = result.data[0]
@@ -49,8 +50,8 @@ class LegacyService:
                 raise HTTPException(status_code=404, detail="Legacy not found")
 
             chain_id = data["crypto_chain_id"]
-            legacy_handler_address = data["crypto_handler_contract_address"]
-            service = SignatureService(legacy_handler_address, chain_id)
+            contract_address = data["crypto_contract_address"]
+            service = SignatureService(contract_address, chain_id)
             message = service.get_signature_message(
                 data["legacy_id"],
                 data["crypto_token_type"],
