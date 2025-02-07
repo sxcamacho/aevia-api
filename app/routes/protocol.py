@@ -1,7 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import httpx
-from typing import Optional
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter(
     prefix="/protocol",
@@ -63,8 +66,9 @@ async def call_agent_api(status_agent: str, user: str, beneficiary: str, legacy:
             "status_agent": status_agent
         }
         try:
+            agent_api_url = os.getenv("AGENT_API_URL")
             response = await client.post(
-                f"http://localhost:8000/start_conversation_{status_agent}/",
+                f"{agent_api_url}/start_conversation_{status_agent}/",
                 json=data,
                 timeout=30.0
             )

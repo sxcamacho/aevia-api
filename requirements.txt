@@ -5,3 +5,5 @@ supabase
 pydantic[email]
 web3
 eth-account
+httpx
+gunicorn
