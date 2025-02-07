@@ -18,23 +18,23 @@ class LegacyService:
 
             result = supabase.table("legacies").insert({
                 "legacy_id": secrets.randbelow(2**256),
-                "first_name": legacy.firstName or None,
-                "last_name": legacy.lastName or None,
-                "email": legacy.email or None,
+                "first_name": legacy.firstName,
+                "last_name": legacy.lastName,
+                "email": legacy.email,
                 "country": legacy.country or None,
-                "trusted_contact_name": legacy.trustedContactName or None,
-                "trusted_contact_email": legacy.trustedContactEmail or None,
+                "trusted_contact_name": legacy.trustedContactName,
+                "trusted_contact_email": legacy.trustedContactEmail,
                 "email_to": legacy.emailTo or None,
                 "email_body": legacy.emailMessage or None,
-                "crypto_wallet_from": legacy.cryptoWalletFrom or None,
-                "crypto_wallet_to": legacy.cryptoWalletTo or None,
-                "crypto_token_type": legacy.cryptoTokenType or None,
-                "crypto_token_address": legacy.cryptoTokenAddress or None,
-                "crypto_token_id": legacy.cryptoTokenId or None,
-                "crypto_amount": legacy.cryptoAmount or None,
+                "crypto_wallet_from": legacy.cryptoWalletFrom,
+                "crypto_wallet_to": legacy.cryptoWalletTo,
+                "crypto_token_type": legacy.cryptoTokenType,
+                "crypto_token_address": legacy.cryptoTokenAddress,
+                "crypto_token_id": legacy.cryptoTokenId,
+                "crypto_amount": legacy.cryptoAmount,
                 "crypto_signature": None,
-                "crypto_chain_id": legacy.cryptoChainId or None,
-                "crypto_contract_address": contract.address
+                "crypto_chain_id": legacy.cryptoChainId,
+                "crypto_contract_address": contract["address"]
             }).execute()
 
             return result.data[0]

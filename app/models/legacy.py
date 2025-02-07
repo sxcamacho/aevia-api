@@ -1,20 +1,19 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 class Legacy(BaseModel):
-    legacyId: int
     firstName: str
     lastName: str
-    email: EmailStr
+    email: str
     country: str
     trustedContactName: str
-    trustedContactEmail: EmailStr
-    emailTo: EmailStr
-    emailMessage: str
+    trustedContactEmail: str
+    emailTo: str
+    emailMessage: str | None = None
     cryptoWalletFrom: str
-    cryptoWalletTo: str
+    cryptoWalletTo: str | None = None
     cryptoTokenAddress: str
     cryptoTokenType: int
-    cryptoTokenId: str
-    cryptoAmount: str 
+    cryptoTokenId: str | None = None
+    cryptoAmount: str | None = None
     cryptoChainId: int
-    cryptoSignature: str
+    cryptoSignature: str | None = None
