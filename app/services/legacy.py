@@ -4,6 +4,9 @@ from app.models.legacy import Legacy
 from app.services.signature import SignatureService
 from app.services.contract import ContractService
 from dotenv import load_dotenv
+from web3 import Web3
+from eth_account.messages import encode_defunct
+import os
 
 import secrets
 import uuid
@@ -99,3 +102,59 @@ class LegacyService:
             return result.data[0]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting last legacy for user {user}: {str(e)}")
+        
+    @staticmethod
+    async def execute_legacy(legacy_id: uuid.UUID):
+        try:
+            result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
+            data = result.data[0]
+
+            if not data:
+                raise HTTPException(status_code=404, detail="Legacy not found")
+            
+            # Get contract info
+            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", data["crypto_chain_id"])
+            
+            # Initialize web3
+            chain_id = data["crypto_chain_id"]
+            web3_url = os.getenv(f"WEB3_URL_{chain_id}")
+            w3 = Web3(Web3.HTTPProvider(web3_url))
+            operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
+            account = w3.eth.account.from_key(operator_private_key)
+            operator_address = account.address
+            contract_instance = w3.eth.contract(
+                address=contract["address"],
+                abi=contract["abi"]
+            )
+
+            # Build transaction
+            tx = contract_instance.functions.executeLegacy(
+                data["legacy_id"],
+                data["crypto_token_type"],
+                data["crypto_token_address"],
+                int(data["crypto_token_id"]) if data["crypto_token_id"] else 0,
+                int(data["crypto_amount"]) if data["crypto_amount"] else 0,
+                data["crypto_wallet_from"],
+                data["crypto_wallet_to"],
+                data["crypto_signature"]
+            ).build_transaction({
+                'from': operator_address,
+                'nonce': w3.eth.get_transaction_count(operator_address),
+                'gas': 2000000,
+                'gasPrice': w3.eth.gas_price
+            })
+
+            # Sign and send transaction
+            signed_tx = w3.eth.account.sign_transaction(tx, operator_private_key)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            
+            # Wait for transaction receipt
+            tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            
+            return {
+                "legacy": data,
+                "transaction": tx_receipt.transactionHash.hex()
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy_id}: {str(e)}")
