@@ -7,6 +7,10 @@ router = APIRouter(
     tags=["legacies"]
 )
 
+@router.get("/last/{user}", status_code=200)
+async def get_last_by_user(user: str):
+    return await LegacyService.get_last_by_user(user)
+
 @router.post("", status_code=200)
 async def create_legacy(legacy: Legacy):
     return await LegacyService.create_legacy(legacy) 

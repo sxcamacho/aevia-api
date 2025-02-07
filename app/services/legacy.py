@@ -91,3 +91,11 @@ class LegacyService:
                     status_code=500,
                     detail=f"Error setting signature: {str(e)}"
                 )
+
+    @staticmethod
+    async def get_last_by_user(user: str):
+        try:
+            result = supabase.table("legacies").select("*").eq("email", user).execute()
+            return result.data[0]
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error getting last legacy for user {user}: {str(e)}")
