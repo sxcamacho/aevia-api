@@ -98,7 +98,7 @@ class LegacyService:
     @staticmethod
     async def get_last_by_user(user: str):
         try:
-            result = supabase.table("legacies").select("*").eq("email", user).execute()
+            result = supabase.table("legacies").select("*").eq("email", user).order("created_at", desc=True).limit(1).execute()
             return result.data[0]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting last legacy for user {user}: {str(e)}")
