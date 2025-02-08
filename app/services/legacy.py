@@ -113,10 +113,10 @@ class LegacyService:
                 raise HTTPException(status_code=404, detail="Legacy not found")
             
             # Get contract info
-            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", data["crypto_chain_id"])
+            chain_id = data["crypto_chain_id"]
+            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", chain_id)
             print(f"interact with {contract['name']} contract")
             # Initialize web3
-            chain_id = data["crypto_chain_id"]
             web3_url = os.getenv(f"WEB3_URL_{chain_id}")
             print(f"connecting to {web3_url}")
             w3 = Web3(Web3.HTTPProvider(web3_url))
