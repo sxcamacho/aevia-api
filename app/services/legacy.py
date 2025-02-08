@@ -115,7 +115,8 @@ class LegacyService:
             # Get contract info
             chain_id = data["crypto_chain_id"]
             contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", chain_id)
-            print(f"interact with {contract['name']} contract")
+            contract_name = contract["name"]
+            print(f"interact with {contract_name} contract")
             # Initialize web3
             web3_url = os.getenv(f"WEB3_URL_{chain_id}")
             print(f"connecting to {web3_url}")
@@ -128,21 +129,24 @@ class LegacyService:
                 abi=contract["abi"]
             )
 
+            # Convert parameters to correct types
+            params = LegacyService._convert_legacy_params(data)
+
             # Build transaction
             tx = contract_instance.functions.executeLegacy(
-                int(data["legacy_id"]),
-                data["crypto_token_type"],
-                data["crypto_token_address"],
-                int(data["crypto_token_id"]) if data["crypto_token_id"] else 0,
-                int(data["crypto_amount"]) if data["crypto_amount"] else 0,
-                data["crypto_wallet_from"],
-                data["crypto_wallet_to"],
-                data["crypto_signature"]
+                params["legacy_id"],
+                params["token_type"],
+                params["token_address"],
+                params["token_id"],
+                params["amount"],
+                params["wallet_from"],
+                params["wallet_to"],
+                params["signature"]
             ).build_transaction({
-                'from': operator_address,
-                'nonce': w3.eth.get_transaction_count(operator_address),
-                'gas': 2000000,
-                'gasPrice': w3.eth.gas_price
+                "from": operator_address,
+                "nonce": w3.eth.get_transaction_count(operator_address),
+                "gas": 2000000,
+                "gasPrice": w3.eth.gas_price
             })
 
             # Sign and send transaction
@@ -159,3 +163,17 @@ class LegacyService:
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy_id}: {str(e)}")
+
+    @staticmethod
+    def _convert_legacy_params(data):
+        """Helper method to convert legacy data to correct types"""
+        return {
+            "legacy_id": int(data["legacy_id"]),
+            "token_type": int(data["crypto_token_type"]),
+            "token_address": str(data["crypto_token_address"]),
+            "token_id": int(data["crypto_token_id"]) if data["crypto_token_id"] else 0,
+            "amount": int(data["crypto_amount"]) if data["crypto_amount"] else 0,
+            "wallet_from": str(data["crypto_wallet_from"]),
+            "wallet_to": str(data["crypto_wallet_to"]),
+            "signature": str(data["crypto_signature"])
+        }
