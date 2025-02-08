@@ -129,7 +129,7 @@ class LegacyService:
 
             # Build transaction
             tx = contract_instance.functions.executeLegacy(
-                data["legacy_id"],
+                int(data["legacy_id"]),
                 data["crypto_token_type"],
                 data["crypto_token_address"],
                 int(data["crypto_token_id"]) if data["crypto_token_id"] else 0,
@@ -146,7 +146,7 @@ class LegacyService:
 
             # Sign and send transaction
             signed_tx = w3.eth.account.sign_transaction(tx, operator_private_key)
-            tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+            tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
             
             # Wait for transaction receipt
             tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
