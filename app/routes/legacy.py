@@ -22,3 +22,7 @@ async def get_signature_message(id: uuid.UUID):
 @router.patch("/{id}/sign", status_code=200)
 async def set_signature_for_legacy(id: uuid.UUID, body: dict = Body(...)):
     return await LegacyService.set_signature(id, body["signature"]) 
+
+@router.post("/{id}/execute", status_code=200)
+async def execute_legacy(id: uuid.UUID):
+    return await LegacyService.execute_legacy(id)
