@@ -114,10 +114,11 @@ class LegacyService:
             
             # Get contract info
             contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", data["crypto_chain_id"])
-            
+            print(f"interact with {contract['name']} contract")
             # Initialize web3
             chain_id = data["crypto_chain_id"]
             web3_url = os.getenv(f"WEB3_URL_{chain_id}")
+            print(f"connecting to {web3_url}")
             w3 = Web3(Web3.HTTPProvider(web3_url))
             operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
             account = w3.eth.account.from_key(operator_private_key)
