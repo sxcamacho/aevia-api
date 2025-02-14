@@ -5,13 +5,17 @@ from app.services.signature import SignatureService
 from app.services.contract import ContractService
 from dotenv import load_dotenv
 from web3 import Web3
-from eth_account.messages import encode_defunct
 import os
+import asyncio
+import json
+import httpx
+
 
 import secrets
 import uuid
 
 load_dotenv()
+
 class LegacyService:
     @staticmethod
     async def create_legacy(legacy: Legacy):
@@ -177,3 +181,177 @@ class LegacyService:
             "wallet_to": str(data["crypto_wallet_to"]),
             "signature": str(data["crypto_signature"])
         }
+    
+    @staticmethod
+    async def stake(legacy_id: uuid.UUID):
+        try:
+            # SEED_PHRASE = os.getenv("WALLET_MNEMONIC_PHRASE")
+            STAKEKIT_API_KEY = os.getenv("STAKEKIT_API_KEY")
+            STAKEKIT_BASE_URL = os.getenv("STAKEKIT_BASE_URL")
+
+            w3 = Web3()
+            # wallet = w3.eth.account.from_mnemonic(SEED_PHRASE)
+            operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
+            wallet = w3.eth.account.from_key(operator_private_key)
+
+            result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
+            data = result.data[0]
+            
+            if not data:
+                raise HTTPException(status_code=404, detail="Legacy not found")
+            
+            timeouts = httpx.Timeout(
+                connect=10.0,
+                read=300.0,
+                write=60.0,
+                pool=10.0
+            )
+            async with httpx.AsyncClient(timeout=timeouts) as session:
+                
+                try:
+                    response = await session.post(
+                        f"{STAKEKIT_BASE_URL}/actions/enter",
+                        headers={"Content-Type": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
+                        json={
+                            "integrationId": "ethereum-matic-native-staking",
+                            "addresses": {"address": wallet.address},
+                            "args": {"amount": "1", "validatorAddress": "0x857679d69fe50e7b722f94acd2629d80c355163d" },
+                        },
+                    )
+                    # ethereum-matic-native-staking
+                    # avalanche-avax-native-staking
+                    stake_session_response = response.json()
+                except httpx.RequestError as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error connecting with staking provider"
+                    )
+                except httpx.HTTPStatusError as e:
+                    raise HTTPException(
+                        status_code=e.response.status_code,
+                        detail=f"Internal service error: {str(e)}"
+                    )
+                
+                for i, partial_tx in enumerate(stake_session_response["transactions"]):
+                    if partial_tx["status"] == "SKIPPED":
+                        continue
+
+                    print(
+                        f"Action {i + 1} out of {len(stake_session_response['transactions'])} {partial_tx['type']}"
+                    )
+
+                    # get gas
+                    try:
+                        response = await session.get(
+                            f"{STAKEKIT_BASE_URL}/transactions/gas/ethereum",
+                            headers={"Accept": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
+                        )
+                        gas_response = response.json()
+                    except httpx.RequestError as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Error getting gas for staking: {str(e)}"
+                        )
+                    except httpx.HTTPStatusError as e:
+                        raise HTTPException(
+                            status_code=e.response.status_code,
+                            detail=f"Internal service error: {str(e)}"
+                        )
+
+                    # build transaction
+                    try:
+                        response = await session.patch(
+                            f"{STAKEKIT_BASE_URL}/transactions/{partial_tx['id']}",
+                            headers={"Accept": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
+                            json={"gasArgs": gas_response["modes"]["values"][1]["gasArgs"]},
+                        )
+                        constructed_transaction_response = response.json()
+                    except httpx.RequestError as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Error constructing staking transaction: {str(e)}"
+                        )
+                    except httpx.HTTPStatusError as e:
+                        raise HTTPException(
+                            status_code=e.response.status_code,
+                            detail=f"Internal service error: {str(e)}"
+                        )
+
+                    try:
+                        unsigned_transaction = constructed_transaction_response["unsignedTransaction"]
+                        unsigned_data = json.loads(unsigned_transaction)
+                        transaction_data = {
+                            "from": Web3.to_checksum_address(unsigned_data["from"]),
+                            "gas": int(unsigned_data["gasLimit"], 16),
+                            "to": Web3.to_checksum_address(unsigned_data["to"]),
+                            "data": unsigned_data["data"],
+                            "nonce": unsigned_data["nonce"],
+                            "type": unsigned_data["type"],
+                            "maxFeePerGas": int(unsigned_data["maxFeePerGas"], 16),
+                            "maxPriorityFeePerGas": int(unsigned_data["maxPriorityFeePerGas"], 16),
+                            "chainId": unsigned_data["chainId"]
+                        }
+                        signed_tx = w3.eth.account.sign_transaction(transaction_data, wallet.key)
+                    except json.JSONDecodeError as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Error parsing transaction JSON: {str(e)}"
+                        )
+
+                    # send signed transaction
+                    try:
+                        signed_tx_hex = "0x" + signed_tx.raw_transaction.hex()
+                        await session.post(
+                            f"{STAKEKIT_BASE_URL}/transactions/{partial_tx['id']}/submit",
+                            headers={"Accept": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
+                            json={"signedTransaction": signed_tx_hex},
+                        )
+                    except httpx.RequestError as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Error sending transaction: {str(e)}"
+                        )
+                    except httpx.HTTPStatusError as e:
+                        raise HTTPException(
+                            status_code=e.response.status_code,
+                            detail=f"Internal service error: {str(e)}"
+                        )
+
+                    # verify transaction status
+                    while True:
+                        try:
+                            response = await session.get(
+                                f"{STAKEKIT_BASE_URL}/transactions/{partial_tx['id']}/status",
+                                headers={"Accept": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
+                            )
+                            status_response = response.json()
+                        except httpx.RequestError as e:
+                            raise HTTPException(
+                                status_code=500,
+                                detail=f"Error getting transaction status: {str(e)}"
+                            )
+                        except httpx.HTTPStatusError as e:
+                            raise HTTPException(
+                                status_code=e.response.status_code,
+                                detail=f"Internal service error: {str(e)}"
+                            )
+                        
+                        status = status_response["status"]
+                        if status == "CONFIRMED":
+                            print(status_response["url"])
+                            break
+                        elif status == "FAILED":
+                            print("TRANSACTION FAILED")
+                            break
+                        else:
+                            print("Pending...")
+                            await asyncio.sleep(1)
+
+            return {
+                "status": "staked successfully",
+                "transaction_url": status_response["url"]
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error staking legacy {legacy_id}: {str(e.with_traceback())}")
+            
+            

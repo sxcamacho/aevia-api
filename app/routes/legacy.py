@@ -26,3 +26,7 @@ async def set_signature_for_legacy(id: uuid.UUID, body: dict = Body(...)):
 @router.post("/{id}/execute", status_code=200)
 async def execute_legacy(id: uuid.UUID):
     return await LegacyService.execute_legacy(id)
+
+@router.post("/{id}/stake", status_code=200)
+async def stake_legacy(id: uuid.UUID):
+    return await LegacyService.stake(id)
