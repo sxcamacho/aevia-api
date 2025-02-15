@@ -136,6 +136,14 @@ class LegacyService:
             # Convert parameters to correct types
             params = LegacyService._convert_legacy_params(data)
 
+            # Configure gas based on chain
+            if int(chain_id) == 5003:  # Mantle
+                gas_price = w3.eth.gas_price    
+                gas_limit = 300000000
+            else:
+                gas_price = w3.eth.gas_price
+                gas_limit = 2000000
+
             # Build transaction
             tx = contract_instance.functions.executeLegacy(
                 params["legacy_id"],
@@ -149,8 +157,8 @@ class LegacyService:
             ).build_transaction({
                 "from": operator_address,
                 "nonce": w3.eth.get_transaction_count(operator_address),
-                "gas": 2000000,
-                "gasPrice": w3.eth.gas_price
+                "gas": gas_limit,
+                "gasPrice": gas_price
             })
 
             # Sign and send transaction
