@@ -137,7 +137,7 @@ class LegacyService:
             params = LegacyService._convert_legacy_params(data)
 
             # Configure gas based on chain
-            if int(chain_id) == 5003:  # Mantle
+            if int(chain_id) in [5000, 5003]:  # Mantle (mainnet y testnet)
                 gas_price = w3.eth.gas_price    
                 gas_limit = 300000000
             else:
