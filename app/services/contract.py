@@ -26,7 +26,7 @@ class ContractService:
                     detail=f"Contract {contract_name} not found for chain ID {chain_id}"
                 )
                 
-            return response.data[0]
+            return Contract(**response.data[0])
             
         except Exception as e:
             raise HTTPException(
