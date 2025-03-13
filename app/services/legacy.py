@@ -9,10 +9,20 @@ import os
 import asyncio
 import json
 import httpx
-
+from app.enums.chain import Chain
+from app.enums.token import Token
+from app.enums.token_type import TokenType
+from app.services.stakekit import StakeKitService
 
 import secrets
 import uuid
+
+timeouts = httpx.Timeout(
+    connect=10.0,
+    read=300.0,
+    write=60.0,
+    pool=10.0
+)
 
 load_dotenv()
 
@@ -20,31 +30,31 @@ class LegacyService:
     @staticmethod
     async def create_legacy(legacy: Legacy):
         try:
-            # TODO: get based chainId contract
-            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", legacy.cryptoChainId)
-
+            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", legacy.chain_id)
             result = supabase.table("legacies").insert({
-                "legacy_id": secrets.randbelow(2**256),
-                "first_name": legacy.firstName,
-                "last_name": legacy.lastName,
-                "email": legacy.email,
-                "country": legacy.country or None,
-                "trusted_contact_name": legacy.trustedContactName,
-                "trusted_contact_email": legacy.trustedContactEmail,
-                "email_to": legacy.emailTo or None,
-                "email_body": legacy.emailMessage or None,
-                "crypto_wallet_from": legacy.cryptoWalletFrom,
-                "crypto_wallet_to": legacy.cryptoWalletTo,
-                "crypto_token_type": legacy.cryptoTokenType,
-                "crypto_token_address": legacy.cryptoTokenAddress,
-                "crypto_token_id": legacy.cryptoTokenId,
-                "crypto_amount": legacy.cryptoAmount,
-                "crypto_signature": None,
-                "crypto_chain_id": legacy.cryptoChainId,
-                "crypto_contract_address": contract["address"]
+                "blockchain_id": secrets.randbelow(2**256),
+                "chain_id": legacy.chainId,
+                "token_type": legacy.token_type,
+                "token_address": legacy.token_address,
+                "token_id": legacy.token_type == TokenType.ERC721 and legacy.token_id or None,
+                "amount": legacy.amount,
+                "wallet": legacy.wallet,
+                "heir_wallet": legacy.heir_wallet,
+                "signature": None,
+                "name": legacy.name,
+                "telegram_id": legacy.telegram_id,
+                "telegram_id_emergency": legacy.telegram_id_emergency,
+                "telegram_id_heir": legacy.telegram_id_heir,
+                "contract_address": contract["address"],
+                "signal_confirmation_retries": legacy.signal_confirmation_retries,
+                "signal_requested_at": legacy.signal_requestedAt,
+                "signal_received_at": legacy.signal_receivedAt,
+                "investment_enabled": legacy.investment_enabled,
+                "investment_risk": legacy.investment_risk,
+                "investment_account_address": legacy.investment_risk,
             }).execute()
 
-            return result.data[0]
+            return Legacy(**result.data[0])
         except Exception as e:
             raise HTTPException(
                     status_code=500,
@@ -55,22 +65,20 @@ class LegacyService:
     async def get_signature_message(id: uuid.UUID):
         try:
             result = supabase.table("legacies").select("*").eq("id", id).execute()
-            data = result.data[0]
-
-            if not data:
+            if not result.data:
                 raise HTTPException(status_code=404, detail="Legacy not found")
 
-            chain_id = data["crypto_chain_id"]
-            contract_address = data["crypto_contract_address"]
-            service = SignatureService(contract_address, chain_id)
+            legacy = Legacy(**result.data[0])
+
+            service = SignatureService(legacy.contract_address, legacy.chain_id)
             message = service.get_signature_message(
-                data["legacy_id"],
-                data["crypto_token_type"],
-                data["crypto_token_address"],
-                data["crypto_token_id"],
-                data["crypto_amount"],
-                data["crypto_wallet_from"],
-                data["crypto_wallet_to"]
+                legacy.id,
+                legacy.token_type,
+                legacy.token_address,
+                legacy.token_id,
+                legacy.amount,
+                legacy.wallet,
+                legacy.wallet_heir
             )
             return message
         except Exception as e:
@@ -83,16 +91,15 @@ class LegacyService:
     async def set_signature(id: uuid.UUID, signature: str):
         try:
             result = supabase.table("legacies").select("*").eq("id", id).execute()
-            data = result.data[0]
-
-            if not data:
+            if not result.data:
                 raise HTTPException(status_code=404, detail="Legacy not found")
+                
 
             result = supabase.table("legacies").update({
-                "crypto_signature": signature
+                "signature": signature
             }).eq("id", id).execute()
 
-            return result.data[0]
+            return Legacy(**result.data[0])
         except Exception as e:
             raise HTTPException(
                     status_code=500,
@@ -103,41 +110,63 @@ class LegacyService:
     async def get_last_by_user(user: str):
         try:
             result = supabase.table("legacies").select("*").eq("email", user).order("created_at", desc=True).limit(1).execute()
-            return result.data[0]
+            if not result.data:
+                raise HTTPException(status_code=404, detail="No legacy found for user")
+            
+            return Legacy(**result.data[0])
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error getting last legacy for user {user}: {str(e)}")
         
+
     @staticmethod
     async def execute_legacy(legacy_id: uuid.UUID):
         try:
             result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
-            data = result.data[0]
 
-            if not data:
+            if not result.data[0]:
                 raise HTTPException(status_code=404, detail="Legacy not found")
             
+            legacy = Legacy(**result.data[0])
+            if legacy.investment_enabled:
+                result = await LegacyService.execute_legacy_investment(legacy)
+            else:
+                result = await LegacyService.execute_legacy_standard(legacy)
+
+            return result
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy_id}: {str(e)}")        
+            
+
+    @staticmethod
+    async def execute_legacy_standard(legacy: Legacy):
+        try:
+            
+            web3_url = os.getenv(f"WEB3_URL_{legacy.chain_id}")
+            
             # Get contract info
-            chain_id = data["crypto_chain_id"]
-            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", chain_id)
-            contract_name = contract["name"]
-            print(f"interact with {contract_name} contract")
+            contract = await ContractService.get_contract_by_chain_and_name("AeviaProtocol", legacy.chain_id)
+            print(f"interact with {contract.name} contract")
+            
             # Initialize web3
-            web3_url = os.getenv(f"WEB3_URL_{chain_id}")
             print(f"connecting to {web3_url}")
             w3 = Web3(Web3.HTTPProvider(web3_url))
+            
+            # TODO: use mnemonic
             operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
             account = w3.eth.account.from_key(operator_private_key)
             operator_address = account.address
+            
             contract_instance = w3.eth.contract(
                 address=contract["address"],
                 abi=contract["abi"]
             )
 
             # Convert parameters to correct types
-            params = LegacyService._convert_legacy_params(data)
+            params = LegacyService._convert_legacy_params(legacy)
 
             # Configure gas based on chain
-            if int(chain_id) in [5000, 5003]:  # Mantle (mainnet y testnet)
+            if int(legacy.chain_id) in [5000, 5003]:  # Mantle (mainnet y testnet)
                 gas_price = w3.eth.gas_price    
                 gas_limit = 300000000
             else:
@@ -177,25 +206,25 @@ class LegacyService:
             raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy_id}: {str(e)}")
 
     @staticmethod
-    def _convert_legacy_params(data):
+    def _convert_legacy_params(legacy: Legacy):
         """Helper method to convert legacy data to correct types"""
         return {
-            "legacy_id": int(data["legacy_id"]),
-            "token_type": int(data["crypto_token_type"]),
-            "token_address": str(data["crypto_token_address"]),
-            "token_id": int(data["crypto_token_id"]) if data["crypto_token_id"] else 0,
-            "amount": int(data["crypto_amount"]) if data["crypto_amount"] else 0,
-            "wallet_from": str(data["crypto_wallet_from"]),
-            "wallet_to": str(data["crypto_wallet_to"]),
-            "signature": str(data["crypto_signature"])
+            "legacy_id": int(legacy.blockchain_id),
+            "token_type": int(legacy.token_type),
+            "token_address": str(legacy.token_address),
+            "token_id": int(legacy.token_id) if legacy.token_id else 0,
+            "amount": int(legacy.amount) if legacy.amount else 0,
+            "wallet_from": str(legacy.wallet),
+            "wallet_to": str(legacy.heir_wallet),
+            "signature": str(legacy.signature)
         }
     
     @staticmethod
     async def stake(legacy_id: uuid.UUID):
         try:
             # SEED_PHRASE = os.getenv("WALLET_MNEMONIC_PHRASE")
-            STAKEKIT_API_KEY = os.getenv("STAKEKIT_API_KEY")
-            STAKEKIT_BASE_URL = os.getenv("STAKEKIT_BASE_URL")
+            # STAKEKIT_API_KEY = os.getenv("STAKEKIT_API_KEY")
+            # STAKEKIT_BASE_URL = os.getenv("STAKEKIT_BASE_URL")
 
             w3 = Web3()
             # wallet = w3.eth.account.from_mnemonic(SEED_PHRASE)
@@ -203,31 +232,30 @@ class LegacyService:
             wallet = w3.eth.account.from_key(operator_private_key)
 
             result = supabase.table("legacies").select("*").eq("id", legacy_id).execute()
-            data = result.data[0]
+            legacy = Legacy(**result.data[0])
+
+            print(legacy)
+            return
             
-            if not data:
+            if not legacy:
                 raise HTTPException(status_code=404, detail="Legacy not found")
             
-            timeouts = httpx.Timeout(
-                connect=10.0,
-                read=300.0,
-                write=60.0,
-                pool=10.0
-            )
             async with httpx.AsyncClient(timeout=timeouts) as session:
                 
                 try:
+                    integration = StakeKitService.get_stakekit_integration_info(legacy["crypto_chain_id"], legacy["crypto_token_address"])
+                    if float(legacy["crypto_amount"]) < integration.minAmount:
+                        raise HTTPException(status_code=400, detail=f"Legacy amount is less than the minimum amount for staking")
+
                     response = await session.post(
                         f"{STAKEKIT_BASE_URL}/actions/enter",
                         headers={"Content-Type": "application/json", "X-API-KEY": STAKEKIT_API_KEY},
                         json={
-                            "integrationId": "ethereum-matic-native-staking",
+                            "integrationId": integration.id,
                             "addresses": {"address": wallet.address},
-                            "args": {"amount": "1", "validatorAddress": "0x857679d69fe50e7b722f94acd2629d80c355163d" },
+                            "args": {"amount": legacy["crypto_amount"], "validatorAddress": integration.validatorAddress },
                         },
                     )
-                    # ethereum-matic-native-staking
-                    # avalanche-avax-native-staking
                     stake_session_response = response.json()
                 except httpx.RequestError as e:
                     raise HTTPException(
@@ -361,5 +389,4 @@ class LegacyService:
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error staking legacy {legacy_id}: {str(e.with_traceback())}")
-            
             
