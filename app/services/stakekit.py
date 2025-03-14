@@ -94,7 +94,7 @@ class StakeKitService:
             amount = float(legacy.amount) / (10 ** decimals)
 
             if amount < min_amount:
-                raise HTTPException(status_code=400, detail=f"Legacy amount is less than the minimum amount for {action}ing")
+                raise HTTPException(status_code=400, detail=f"Legacy amount is less than the minimum amount for {action}")
 
             response = await session.post(
                 f"{StakeKitService.BASE_URL}/actions/{api_action}",
@@ -122,7 +122,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error connecting with {action}ing provider: {str(e)}"
+                detail=f"Error connecting with {action} provider: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -141,7 +141,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error getting gas for {action}ing: {str(e)}"
+                detail=f"Error getting gas for {action}: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -161,7 +161,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error constructing {action}ing transaction: {str(e)}"
+                detail=f"Error constructing {action} transaction: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -180,7 +180,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error sending {action}ing transaction: {str(e)}"
+                detail=f"Error sending {action} transaction: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -199,7 +199,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error getting {action}ing transaction status: {str(e)}"
+                detail=f"Error getting {action} transaction status: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -277,7 +277,7 @@ class StakeKitService:
             w3 = Web3()
             operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
             wallet = w3.eth.account.from_key(operator_private_key)
-            action = "stak" if api_action == "enter" else "unstak"
+            action = "stake" if api_action == "enter" else "unstake"
 
             async with httpx.AsyncClient(timeout=timeouts) as session:
                 stake_session_response = await StakeKitService.post_action(session, wallet, legacy, api_action, action)
@@ -285,7 +285,7 @@ class StakeKitService:
 
                 if "transactions" not in stake_session_response:
                     raise HTTPException(
-                        status_code=400, detail=f"Failed to create transaction for {action}ing"
+                        status_code=400, detail=f"Failed to create transaction for {action}"
                     )
 
                 return await StakeKitService.execute_transaction_flow(
@@ -294,7 +294,7 @@ class StakeKitService:
         except HTTPException as e:
             raise e
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error executing {action}ing: {str(e.with_traceback())}")
+            raise HTTPException(status_code=500, detail=f"Error executing {action}: {str(e.with_traceback())}")
 
     @staticmethod
     async def get_stake_balance(legacy: Legacy):
