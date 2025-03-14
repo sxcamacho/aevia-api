@@ -30,3 +30,7 @@ async def execute_legacy(id: uuid.UUID):
 @router.post("/{id}/stake", status_code=200)
 async def stake_legacy(id: uuid.UUID):
     return await LegacyService.stake(id)
+
+@router.post("/{id}/withdraw", status_code=200)
+async def withdraw_legacy(id: uuid.UUID):
+    return await LegacyService.withdraw(id)
