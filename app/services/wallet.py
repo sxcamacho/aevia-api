@@ -3,6 +3,8 @@ from web3 import Web3
 from fastapi import HTTPException
 from dotenv import load_dotenv
 from eth_account import Account
+from app.models.investment_wallet import InvestmentWallet
+from web3 import Web3
 
 load_dotenv()
 

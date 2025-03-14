@@ -137,7 +137,9 @@ class LegacyService:
                 result = await LegacyService.execute_legacy_standard(legacy)
 
             return result
-
+            
+        except HTTPException as e:
+            raise e
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy_id}: {str(e)}")        
             
@@ -224,8 +226,16 @@ class LegacyService:
         }
     
     @staticmethod
+    async def get_balance(legacy_id: uuid.UUID):
+        legacy = await LegacyService.get_legacy(legacy_id)
+        if not legacy:
+            raise HTTPException(status_code=404, detail="Legacy not found")
+        balances = await StakeKitService.get_stake_balance(legacy)
+        return StakeKitService.format_balance_data(balances)
+
+    @staticmethod
     async def execute_legacy_investment(legacy: Legacy):
-        response = await StakeKitService.perform_staking_action(legacy, "exit", "unstak")
+        response = await StakeKitService.perform_staking_action(legacy, "exit")
         await InvestmentWalletService.update_staked_at(legacy.id)
         return response
             
@@ -234,21 +244,18 @@ class LegacyService:
         legacy = await LegacyService.get_legacy(legacy_id)
         if not legacy:
             raise HTTPException(status_code=404, detail="Legacy not found")
-        return await StakeKitService.perform_staking_action(legacy, "enter", "stak")
+        return await StakeKitService.perform_staking_action(legacy, "enter")
+
+    @staticmethod
+    async def claim(legacy_id: uuid.UUID):
+        legacy = await LegacyService.get_legacy(legacy_id)
+        if not legacy:
+            raise HTTPException(status_code=404, detail="Legacy not found")
+        return await StakeKitService.claim(legacy)
 
     @staticmethod
     async def withdraw(legacy_id: uuid.UUID):
         legacy = await LegacyService.get_legacy(legacy_id)
         if not legacy:
             raise HTTPException(status_code=404, detail="Legacy not found")
-        investment_wallet = await InvestmentWalletService.get_investment_wallet(legacy.id)
-        if not investment_wallet.unstaked_at:
-            raise HTTPException(status_code=404, detail="Unstaked_at not found")
-
-        unstaked_at_datetime = datetime.fromisoformat(investment_wallet.unstaked_at)
-        if unstaked_at_datetime <= datetime.now(timezone.utc) - timedelta(days=2):
-            return await StakeKitService.get_stake_balance(legacy)
-        else:
-            return await StakeKitService.get_stake_balance(legacy)
-            #raise HTTPException(status_code=404, detail="The 2-day period has not passed yet")
-        
+        return await StakeKitService.withdraw(legacy)
