@@ -256,6 +256,12 @@ class StakeKitService:
             # Verificar estado de la transacción
             while True:
                 status_response = await StakeKitService.get_transaction_status(session, action_type, partial_tx)
+                if not status_response or "status" not in status_response:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"StakeKit API did not return a valid transaction status. Response: {status_response}"
+                    )
+                    
                 status = status_response["status"]
                 if status == "CONFIRMED":
                     print(status_response["url"])
@@ -348,6 +354,7 @@ class StakeKitService:
         formatted_data = []
         for item in balance_data:
             formatted_data.append({
+                "id": item["groupId"],
                 "type": item["type"],
                 "amount": item["amount"],
                 "date": item.get("date"),
@@ -361,14 +368,20 @@ class StakeKitService:
     async def post_pending_action(session, integration_id: str, entry, action_type: str):
         """Ejecuta la acción CLAIM_UNSTAKED o CLAIM_REWARDS en StakeKit."""
         try:
-            passthrough = entry.get("groupId")
+            # Buscar la acción pendiente que coincida con action_type
+            matching_action = next(
+                (pa for pa in entry.get("pendingActions", []) if pa.get("type") == action_type), 
+                None
+            )
+            if not matching_action:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"No pending action of type '{action_type}' found."
+                )
+
+            passthrough = matching_action.get("passthrough")
             amount = entry.get("amount")
             validator_address = entry.get("validatorAddress")
-            print(amount)
-            print(passthrough)
-            print(integration_id)
-            print(action_type)
-            print(validator_address)
 
             response = await session.post(
                 f"{StakeKitService.BASE_URL}/actions/pending",
@@ -399,20 +412,15 @@ class StakeKitService:
                 stake_balance = await StakeKitService.get_stake_balance(legacy)
 
                 # Filtrar las acciones pendientes según el tipo de acción
-                if action_type in ["CLAIM_UNSTAKED", "CLAIM_REWARDS"]:
-                    claimable_entries = [
-                        entry for entry in stake_balance 
-                        if entry["type"] == "unstaked"
-                    ]
-                elif action_type == "CLAIM_REWARDS":
+                if action_type == "CLAIM_REWARDS":
                     claimable_entries = [
                      entry for entry in stake_balance 
                         if entry["type"] == "rewards"
                     ]
-                elif action_type == "WITHDRAW_ALL":
+                elif action_type == "WITHDRAW":
                     claimable_entries = [
                         entry for entry in stake_balance 
-                        if entry["type"] == "claimed"
+                        if entry["type"] == "unstaked"
                     ]
                 else:
                     raise HTTPException(status_code=400, detail=f"Invalid action type: {action_type}")
@@ -421,8 +429,8 @@ class StakeKitService:
                     return False
 
                 for entry in claimable_entries:
-                    # Para CLAIM_UNSTAKED, verificar la fecha antes de reclamar
-                    if action_type == "CLAIM_UNSTAKED" and "date" in entry:
+                    # Para WITHDRAW, verificar la fecha antes de reclamar
+                    if action_type == "WITHDRAW" and "date" in entry:
                         unstake_date = datetime.fromisoformat(entry["date"])
                         if unstake_date > datetime.now(timezone.utc):
                             continue  # Aún no está listo para reclamar
@@ -452,10 +460,9 @@ class StakeKitService:
     async def claim(legacy: Legacy):
         """Ejecuta el proceso de claiming en StakeKit."""
        
-        # Ejecuta las acciones de claim (unstaked y rewards)
-        are_unstaked = await StakeKitService.perform_pending_action(legacy, "CLAIM_UNSTAKED")
+        # Ejecuta las acciones de claim (rewards)
         are_rewards = await StakeKitService.perform_pending_action(legacy, "CLAIM_REWARDS")
-        if not are_unstaked and not are_rewards:
+        if not are_rewards:
             return {"status": "Nothing to claim"}
         return {"status": "Claim process completed"}
 
@@ -464,7 +471,7 @@ class StakeKitService:
     async def withdraw(legacy: Legacy):
         """Ejecuta el proceso de retiro de todos los fondos disponibles en StakeKit."""
 
-        are_withdrawn = await StakeKitService.perform_pending_action(legacy, "WITHDRAW_ALL")
+        are_withdrawn = await StakeKitService.perform_pending_action(legacy, "WITHDRAW")
         if not are_withdrawn:
             return {"status": "Nothing to withdraw"}
         return {"status": "Withdraw process completed"}

@@ -236,18 +236,4 @@ Aevia API uses **Supabase** as its database backend, with the following primary 
 
 ---
 
-### 🔹 **Transactions Table (transactions)**  
-
-| **Field** | **Description** |
-|-----------|---------------|
-| `id` | Unique identifier of the transaction. |
-| `legacy_id` | Foreign key linking the transaction to a legacy. |
-| `tx_hash` | Blockchain transaction hash. |
-| `type` | Type of transaction (stake, unstake, claim, withdraw, etc.). |
-| `status` | Current status of the transaction (pending, confirmed, failed). |
-| `created_at` | Timestamp when the transaction was created. |
-| `updated_at` | Timestamp when the transaction was last updated. |
-
----
-
 Each table plays a critical role in handling crypto inheritance, staking, and fund withdrawals within the **Aevia API** ecosystem. 🚀  
