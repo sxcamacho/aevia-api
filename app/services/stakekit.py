@@ -84,7 +84,7 @@ class StakeKitService:
             raise HTTPException(status_code=400, detail=f"integration not defined for chain {chain_id} and token {token_address}")
 
     @staticmethod
-    async def post_action(session, wallet, legacy, api_action, action):
+    async def post_action(session, wallet, legacy, api_action, log_action):
         try:
             integration = StakeKitService.get_stakekit_integration_id(legacy.chain_id, legacy.token_address)
             integration_info = await StakeKitService.get_yield_info(integration["id"])
@@ -94,7 +94,7 @@ class StakeKitService:
             amount = float(legacy.amount) / (10 ** decimals)
 
             if amount < min_amount:
-                raise HTTPException(status_code=400, detail=f"Legacy amount is less than the minimum amount for {action}")
+                raise HTTPException(status_code=400, detail=f"Legacy amount is less than the minimum amount for {log_action}")
 
             response = await session.post(
                 f"{StakeKitService.BASE_URL}/actions/{api_action}",
@@ -122,7 +122,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error connecting with {action} provider: {str(e)}"
+                detail=f"Error connecting with {log_action} provider: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -131,7 +131,7 @@ class StakeKitService:
             )
 
     @staticmethod
-    async def get_current_gas(session, action):
+    async def get_current_gas(session, log_action):
         try:
             response = await session.get(
                 f"{StakeKitService.BASE_URL}/transactions/gas/ethereum",
@@ -141,7 +141,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error getting gas for {action}: {str(e)}"
+                detail=f"Error getting gas for {log_action}: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -150,7 +150,7 @@ class StakeKitService:
             )
 
     @staticmethod
-    async def construct_transaction(session, action, partial_tx, gas_args):
+    async def construct_transaction(session, log_action, partial_tx, gas_args):
         try:
             response = await session.patch(
                 f"{StakeKitService.BASE_URL}/transactions/{partial_tx['id']}",
@@ -161,7 +161,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error constructing {action} transaction: {str(e)}"
+                detail=f"Error constructing {log_action} transaction: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -170,7 +170,7 @@ class StakeKitService:
             )
 
     @staticmethod
-    async def submit_transaction(session, action, partial_tx, signed_tx_hex):
+    async def submit_transaction(session, log_action, partial_tx, signed_tx_hex):
         try:
             await session.post(
                 f"{StakeKitService.BASE_URL}/transactions/{partial_tx['id']}/submit",
@@ -180,7 +180,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error sending {action} transaction: {str(e)}"
+                detail=f"Error sending {log_action} transaction: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -189,7 +189,7 @@ class StakeKitService:
             )
 
     @staticmethod
-    async def get_transaction_status(session, action, partial_tx):
+    async def get_transaction_status(session, log_action, partial_tx):
         try:
             response = await session.get(
                 f"{StakeKitService.BASE_URL}/transactions/{partial_tx['id']}/status",
@@ -199,7 +199,7 @@ class StakeKitService:
         except httpx.RequestError as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error getting {action} transaction status: {str(e)}"
+                detail=f"Error getting {log_action} transaction status: {str(e)}"
             )
         except httpx.HTTPStatusError as e:
             raise HTTPException(
@@ -208,13 +208,12 @@ class StakeKitService:
             )
 
     @staticmethod
-    async def execute_transaction_flow(session, wallet, action_type, transactions):
-        """
-        Maneja el flujo completo de transacción:
-        1. Construcción de gas.
-        2. Construcción de transacción.
-        3. Firma y envío de la transacción.
-        4. Verificación de estado.
+    async def execute_transaction_flow(session, wallet, log_action, transactions):
+        """ Handles the complete transaction flow:
+        1. Gas estimation.
+        2. Transaction construction.
+        3. Signing and submitting the transaction.
+        4. Status verification.
         """
         w3 = Web3()
 
@@ -224,9 +223,9 @@ class StakeKitService:
 
             print(f"Action {i + 1} out of {len(transactions)}: {partial_tx['type']}")
 
-            gas_response = await StakeKitService.get_current_gas(session, action_type)
+            gas_response = await StakeKitService.get_current_gas(session, log_action)
             constructed_transaction_response = await StakeKitService.construct_transaction(
-                session, action_type, partial_tx, gas_response["modes"]["values"][1]["gasArgs"]
+                session, log_action, partial_tx, gas_response["modes"]["values"][1]["gasArgs"]
             )
 
             try:
@@ -251,11 +250,11 @@ class StakeKitService:
                 )
 
             signed_tx_hex = "0x" + signed_tx.raw_transaction.hex()
-            await StakeKitService.submit_transaction(session, action_type, partial_tx, signed_tx_hex)
+            await StakeKitService.submit_transaction(session, log_action, partial_tx, signed_tx_hex)
 
-            # Verificar estado de la transacción
+            # Verify transaction status
             while True:
-                status_response = await StakeKitService.get_transaction_status(session, action_type, partial_tx)
+                status_response = await StakeKitService.get_transaction_status(session, log_action, partial_tx)
                 if not status_response or "status" not in status_response:
                     raise HTTPException(
                         status_code=500,
@@ -273,50 +272,45 @@ class StakeKitService:
                     print("Pending...")
                     await asyncio.sleep(1)
 
-        return {"status": f"{action_type} successfully executed"}
+        return {"status": f"{log_action} successfully executed"}
 
     @staticmethod
     async def perform_staking_action(legacy: Legacy, api_action: str):
-        """Ejecuta staking o unstaking en StakeKit."""
+        """Executes staking or unstaking in StakeKit."""
         try:
             investment_wallet = await InvestmentWalletService.get_investment_wallet(legacy.id)
-            w3 = Web3()
-            operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
-            wallet = w3.eth.account.from_key(operator_private_key)
-            action = "stake" if api_action == "enter" else "unstake"
+            wallet = WalletService.get_wallet_from_index(investment_wallet.index)
+            log_action = "stake" if api_action == "enter" else "unstake"
 
             async with httpx.AsyncClient(timeout=timeouts) as session:
-                stake_session_response = await StakeKitService.post_action(session, wallet, legacy, api_action, action)
+                stake_session_response = await StakeKitService.post_action(session, wallet, legacy, api_action, log_action)
                 print("StakeKit Response:", stake_session_response)
 
                 if "transactions" not in stake_session_response:
                     raise HTTPException(
-                        status_code=400, detail=f"Failed to create transaction for {action}"
+                        status_code=400, detail=f"Failed to create transaction for {log_action}"
                     )
 
                 return await StakeKitService.execute_transaction_flow(
-                    session, wallet, action, stake_session_response["transactions"]
+                    session, wallet, log_action, stake_session_response["transactions"]
                 )
         except HTTPException as e:
             raise e
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error executing {action}: {str(e.with_traceback())}")
+            raise HTTPException(status_code=500, detail=f"Error executing {log_action}: {str(e.with_traceback())}")
 
     @staticmethod
     async def get_stake_balance(legacy: Legacy):
-        """Obtiene el balance de staking del usuario."""
+        """Retrieves the user's staking balance."""
         try:
             investment_wallet = await InvestmentWalletService.get_investment_wallet(legacy.id)
-            #wallet = WalletService.get_wallet_from_index(investment_wallet.index)
-            w3 = Web3()
-            operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
-            wallet = w3.eth.account.from_key(operator_private_key)
+            wallet = WalletService.get_wallet_from_index(investment_wallet.index)
 
-            # Obtener la integración de StakeKit para este token
+            # Get the StakeKit integration for this token
             integration = StakeKitService.get_stakekit_integration_id(legacy.chain_id, legacy.token_address)
             integrationInfo = await StakeKitService.get_yield_info(integration["id"])
             validatorAddress = integrationInfo["metadata"]["defaultValidator"]
-            # Crear la solicitud
+            # Create the request
             async with httpx.AsyncClient() as session:
                 response = await session.post(
                     f"{StakeKitService.BASE_URL}/yields/{integration['id']}/balances",
@@ -327,7 +321,7 @@ class StakeKitService:
                         }
                 )
 
-                # Verificar si la respuesta es exitosa
+                # Verify if the response is successful
                 if response.status_code != 201:
                     raise HTTPException(
                         status_code=response.status_code,
@@ -336,7 +330,7 @@ class StakeKitService:
 
                 balance_data = response.json()
                 print(balance_data)
-                return balance_data  # Devuelve toda la info del balance
+                return balance_data  # Returns all balance information
 
         except httpx.RequestError as e:
             raise HTTPException(
@@ -365,23 +359,13 @@ class StakeKitService:
         return formatted_data
 
     @staticmethod
-    async def post_pending_action(session, integration_id: str, entry, action_type: str):
-        """Ejecuta la acción CLAIM_UNSTAKED o CLAIM_REWARDS en StakeKit."""
+    async def post_pending_action(session, integration_id: str, entry, action):
+        """Executes a pending action in StakeKit."""
         try:
-            # Buscar la acción pendiente que coincida con action_type
-            matching_action = next(
-                (pa for pa in entry.get("pendingActions", []) if pa.get("type") == action_type), 
-                None
-            )
-            if not matching_action:
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"No pending action of type '{action_type}' found."
-                )
-
-            passthrough = matching_action.get("passthrough")
             amount = entry.get("amount")
             validator_address = entry.get("validatorAddress")
+            action_type = action.get("type")
+            passthrough = action.get("passthrough")
 
             response = await session.post(
                 f"{StakeKitService.BASE_URL}/actions/pending",
@@ -399,79 +383,52 @@ class StakeKitService:
             raise HTTPException(status_code=500, detail=f"Error connecting to StakeKit: {str(e)}")
    
     @staticmethod
-    async def perform_pending_action(legacy: Legacy, action_type: str):
-        """Ejecuta una acción pendiente como CLAIM_UNSTAKED, CLAIM_REWARDS o WITHDRAW_ALL."""
+    async def perform_pending_actions(legacy: Legacy):
+        """Executes all pending actions in StakeKit."""
         try:
             investment_wallet = await InvestmentWalletService.get_investment_wallet(legacy.id)
-            w3 = Web3()
-            operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
-            wallet = w3.eth.account.from_key(operator_private_key)
+            wallet = WalletService.get_wallet_from_index(investment_wallet.index)
 
             async with httpx.AsyncClient(timeout=timeouts) as session:
+                results = []
                 integration = StakeKitService.get_stakekit_integration_id(legacy.chain_id, legacy.token_address)
                 stake_balance = await StakeKitService.get_stake_balance(legacy)
 
-                # Filtrar las acciones pendientes según el tipo de acción
-                if action_type == "CLAIM_REWARDS":
-                    claimable_entries = [
-                     entry for entry in stake_balance 
-                        if entry["type"] == "rewards"
-                    ]
-                elif action_type == "WITHDRAW":
-                    claimable_entries = [
-                        entry for entry in stake_balance 
-                        if entry["type"] == "unstaked"
-                    ]
-                else:
-                    raise HTTPException(status_code=400, detail=f"Invalid action type: {action_type}")
-
-                if not claimable_entries:
-                    return False
-
-                for entry in claimable_entries:
-                    # Para WITHDRAW, verificar la fecha antes de reclamar
-                    if action_type == "WITHDRAW" and "date" in entry:
-                        unstake_date = datetime.fromisoformat(entry["date"])
-                        if unstake_date > datetime.now(timezone.utc):
-                            continue  # Aún no está listo para reclamar
-
-                    # Ejecutar la acción pendiente
-                    pending_response = await StakeKitService.post_pending_action(
-                        session, integration["id"], entry, action_type
-                    )
-                    print(f"Pending Action Response ({action_type}):", pending_response)
-
-                    if "transactions" not in pending_response:
-                        raise HTTPException(
-                            status_code=400, detail=f"Failed to create transaction for {action_type}"
+                executable_entries = [
+                    entry for entry in stake_balance
+                    if "pendingActions" in entry and entry["pendingActions"]  # Checks if there are pending actions
+                ]
+                for entry in executable_entries:
+                    groupId = entry.get("groupId")
+                    pending_actions = entry.get("pendingActions", [])
+                    for action in pending_actions:
+                        action_type = action.get("type")
+                        # Execute the pending action
+                        pending_response = await StakeKitService.post_pending_action(
+                            session, integration["id"], entry, action
                         )
+                        print(f"Pending Action Response ({groupId}):", pending_response)
 
-                    await StakeKitService.execute_transaction_flow(
-                        session, wallet, action_type, pending_response["transactions"]
-                    )
-                    return True
+                        if "transactions" not in pending_response:
+                            raise HTTPException(
+                                status_code=400, detail=f"Failed to create transaction for {action_type}"
+                            )
+
+                        response = await StakeKitService.execute_transaction_flow(
+                            session, wallet, action_type, pending_response["transactions"]
+                        )
+                        results.append({groupId: response})
+                return results
         except HTTPException as e:
             raise e
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error executing {action_type}: {str(e.with_traceback())}")
-
-
-    @staticmethod
-    async def claim(legacy: Legacy):
-        """Ejecuta el proceso de claiming en StakeKit."""
-       
-        # Ejecuta las acciones de claim (rewards)
-        are_rewards = await StakeKitService.perform_pending_action(legacy, "CLAIM_REWARDS")
-        if not are_rewards:
-            return {"status": "Nothing to claim"}
-        return {"status": "Claim process completed"}
-
+            raise HTTPException(status_code=500, detail=f"Error executing pending actions: {str(e)}")
     
     @staticmethod
     async def withdraw(legacy: Legacy):
-        """Ejecuta el proceso de retiro de todos los fondos disponibles en StakeKit."""
+        """Executes the process of withdrawing all available funds in StakeKit."""
 
-        are_withdrawn = await StakeKitService.perform_pending_action(legacy, "WITHDRAW")
-        if not are_withdrawn:
+        results = await StakeKitService.perform_pending_actions(legacy)
+        if not results:
             return {"status": "Nothing to withdraw"}
-        return {"status": "Withdraw process completed"}
+        return results

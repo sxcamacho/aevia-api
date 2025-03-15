@@ -82,7 +82,6 @@ uvicorn app.main:app --reload
 | **PATCH** | `/legacies/{id}/sign` | Signs a legacy with a Web3 signature. |
 | **POST** | `/legacies/{id}/execute` | Executes a legacy. |
 | **POST** | `/legacies/{id}/stake` | Stakes the legacy funds via StakeKit. |
-| **POST** | `/legacies/{id}/claim` | Claims unstaked funds and staking rewards. |
 | **POST** | `/legacies/{id}/withdraw` | Withdraws all available funds. |
 | **GET** | `/legacies/{id}/balance` | Retrieves the balance of a legacy in StakeKit. |
 
@@ -112,48 +111,28 @@ This endpoint sends the legacy funds to **StakeKit** for staking.
 
 ---
 
-### 🔹 **Claim (POST /legacies/{id}/claim)**  
-
-This endpoint executes a **claim** action in **StakeKit**, reclaiming:  
-
-- **Unstaked funds** (`CLAIM_UNSTAKED`)  
-- **Staking rewards** (`CLAIM_REWARDS`)  
-
-#### **Process Flow:**  
-1. Retrieve the **legacy balance**.  
-2. Identify **unstaked funds** and **staking rewards**.  
-3. Execute the `CLAIM_UNSTAKED` action (if unstaked funds are available).  
-4. Execute the `CLAIM_REWARDS` action (if rewards are available).  
-5. **Build and sign transactions**.  
-6. Submit transactions and **monitor until confirmation**.  
-
-#### **Example Response:**  
-
-```json
-{
-  "status": "Claim process completed"
-}
-```
-
----
-
 ### 🔹 **Withdraw (POST /legacies/{id}/withdraw)**  
 
-This endpoint **withdraws** all available funds from **StakeKit** (`WITHDRAW_ALL`).  
+This endpoint **executes all pending actions** related to a wallet's **stake balance** in **StakeKit**.
 
 #### **Process Flow:**  
 1. Retrieve the **legacy balance**.  
-2. Identify funds ready for withdrawal (`claimed`).  
-3. Execute the `WITHDRAW_ALL` action in **StakeKit**.  
-4. **Build and sign the transaction**.  
-5. Submit the transaction and **monitor until confirmation**.  
+2. Identify **all pending actions** such as unstaked funds, claim rewards, and withdrawals.  
+3. Execute each **pending action** accordingly.  
+4. **Build and sign transactions**.  
+5. Submit transactions and **monitor until confirmation**.  
 
 #### **Example Response:**  
 
 ```json
-{
-  "status": "Withdraw process completed"
-}
+[
+  {
+    "groupId": "83edaa5c-1037-5bb6-b883-d3534d6a1faa",
+    "status": "WITHDRAW successfully executed",
+    "transaction_url": "https://etherscan.io/tx/0x123..."
+  }
+]
+
 ```
 
 ---
@@ -175,7 +154,6 @@ Each **StakeKit operation** follows a structured **transaction execution flow**,
 |------------|----------------|
 | **Stake (Enter)** | Deposits funds into a staking position. |
 | **Unstake (Exit)** | Starts the unstaking process. |
-| **Claim (Unstaked & Rewards)** | Collects available rewards and unstaked funds. |
 | **Withdraw** | Moves claimed funds back to the user's wallet. |
 
 ---
