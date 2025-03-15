@@ -81,7 +81,7 @@ class LegacyService:
 
             service = SignatureService(legacy.contract_address, legacy.chain_id)
             message = service.get_signature_message(
-                legacy.id,
+                legacy.blockchain_id,
                 legacy.token_type,
                 legacy.token_address,
                 legacy.token_id,
@@ -158,7 +158,6 @@ class LegacyService:
             print(f"connecting to {web3_url}")
             w3 = Web3(Web3.HTTPProvider(web3_url))
             
-            # TODO: use mnemonic
             operator_private_key = os.getenv("OPERATOR_PRIVATE_KEY")
             account = w3.eth.account.from_key(operator_private_key)
             operator_address = account.address
@@ -170,14 +169,6 @@ class LegacyService:
 
             # Convert parameters to correct types
             params = LegacyService._convert_legacy_params(legacy)
-
-            # Configure gas based on chain
-            if int(legacy.chain_id) in [5000, 5003]:  # Mantle (mainnet y testnet)
-                gas_price = w3.eth.gas_price    
-                gas_limit = 300000000
-            else:
-                gas_price = w3.eth.gas_price
-                gas_limit = 2000000
 
             # Build transaction
             tx = contract_instance.functions.executeLegacy(
@@ -192,8 +183,8 @@ class LegacyService:
             ).build_transaction({
                 "from": operator_address,
                 "nonce": w3.eth.get_transaction_count(operator_address),
-                "gas": gas_limit,
-                "gasPrice": gas_price
+                "gas": 2000000,
+                "gasPrice": w3.eth.gas_price
             })
 
             # Sign and send transaction
@@ -204,25 +195,25 @@ class LegacyService:
             tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
             
             return {
-                "legacy": data,
+                "legacy": legacy,
                 "transaction": tx_receipt.transactionHash.hex()
             }
             
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error executing legacy {blockchain_id}: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error executing legacy {legacy.blockchain_id}: {str(e)}")
 
     @staticmethod
     def _convert_legacy_params(legacy: Legacy):
         """Helper method to convert legacy data to correct types"""
         return {
             "blockchain_id": int(legacy.blockchain_id),
-            "token_type": int(legacy.token_type),
-            "token_address": str(legacy.token_address),
+            # "token_type": legacy.token_type.value,
+            # "token_address": str(legacy.token_address),
             "token_id": int(legacy.token_id) if legacy.token_id else 0,
             "amount": int(legacy.amount) if legacy.amount else 0,
-            "wallet": str(legacy.wallet),
-            "heir_wallet": str(legacy.heir_wallet),
-            "signature": str(legacy.signature)
+            # "wallet": str(legacy.wallet),
+            # "heir_wallet": str(legacy.heir_wallet),
+            # "signature": str(legacy.signature)
         }
     
     @staticmethod

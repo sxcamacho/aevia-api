@@ -4,7 +4,7 @@ from app.enums.investment_risk import InvestmentRisk
 
 class Legacy(BaseModel):
     id: str | None = None
-    blokchain_id: str | None = None
+    blockchain_id: str | None = None
     chain_id: int
     token_type: TokenType
     token_address: str

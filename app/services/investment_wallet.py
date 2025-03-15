@@ -22,15 +22,22 @@ class InvestmentWalletService:
     @staticmethod
     async def create_investment_wallet(legacy_id: uuid.UUID):
         try:
-            result = supabase.table("investment_wallets").select("index").order("index", desc=True).limit(1).execute()
-            new_index = result.data[0]["index"] + 1 if result.data else 0
+            # create investment wallet
+            wallet = supabase.table("investment_wallets").insert({
+                "legacy_id": legacy_id,
+            }).execute()
+
+            # get wallet index
+            new_index = wallet.data[0]["index"]
+
+            # get wallet from index
             wallet = WalletService.get_wallet_from_index(new_index)
 
-            result = supabase.table("investment_wallets").insert({
+            # update investment wallet
+            result = supabase.table("investment_wallets").update({
                 "index": new_index,
-                "legacy_id": legacy_id,
                 "address": wallet.address,
-            }).execute()
+            }).eq("legacy_id", legacy_id).execute()
 
             return InvestmentWallet(**result.data[0])
         except Exception as e:
